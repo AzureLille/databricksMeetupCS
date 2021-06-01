@@ -1,20 +1,6 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC Source : https://github.com/frenchlam/Airline_ontime_prediction/blob/master/Airline_prediction.scala
-
-# COMMAND ----------
-
-# MAGIC %fs ls dbfs:/databricks-datasets/airlines
-
-# COMMAND ----------
-
-# MAGIC %sh
-# MAGIC head -50 /dbfs/databricks-datasets/airlines/part-00000
-
-# COMMAND ----------
-
-# MAGIC %sh
-# MAGIC ls /dbfs
+# MAGIC Inspired by : https://github.com/frenchlam/Airline_ontime_prediction/blob/master/Airline_prediction.scala
 
 # COMMAND ----------
 
@@ -93,26 +79,31 @@ spark.udf.register("delay_label",delay_label,IntegerType())
 # COMMAND ----------
 
 flights_data_wHead = "dbfs:/databricks-datasets/airlines/part-00000"
-flights_data_full= "dbfs:/databricks-datasets/airlines/part-000{0[1-9],1[0-5]}"
+flights_data_full= "dbfs:/databricks-datasets/airlines/part-009[0-5][0-9]" ## Here we got date from 2003 to 2008 (and a bunch of older ones)
 
 fl_first_df=spark.read.format("csv").\
 option("delimiter",",").\
 option("inferschema",True).\
 option("header",True).\
+option("nullValue", "NA").\
 load(flights_data_wHead)
+
+fl_schema=fl_first_df.schema
 
 fl_remaining_df = spark.read.\
 option("header", "false").\
+option("nullValue", "NA").\
 schema(fl_schema).\
 csv(flights_data_full)
 
-flightsRaw_df = (fl_first.union(fl_first_df)
+flightsRaw_df = (fl_first_df.union(fl_remaining_df)
                          .fillna("NA")
+                         .fillna(0,subset=["CRSDepTime"])
                          .filter("Origin = 'ORD'" ).cache())
 
 flightsRaw_df.createOrReplaceTempView("flights_raw")
 
-display(flightsRaw_df)
+display(flightsRaw_df.select("CRSDepTime").distinct())
 
 # COMMAND ----------
 
@@ -136,7 +127,7 @@ cast(Month as int) Month,
 cast(DayofMonth as int) Day, 
 cast(DayOfWeek as int) DayOfWeek, 
 toDateString(Year, Month, DayofMonth) DateString, 
-get_hour_base10(CRSDepTime) decimal_DepTime, 
+get_hour_base10(cast(CRSDepTime as string)) decimal_DepTime, 
 UniqueCarrier,  
 cast(FlightNum as int) FlightNum,  
 IFNULL(TailNum, 'N/A') AS TailNum, 
@@ -153,76 +144,55 @@ flights_df.createOrReplaceTempView("flights")
 
 # COMMAND ----------
 
+# MAGIC %sql
+# MAGIC select * from flights;
+
+# COMMAND ----------
+
+spark.sql("SELECT * from flights").show()
+
+# COMMAND ----------
+
 # MAGIC %md
 # MAGIC <h2> Weather data definition </h2>
 
 # COMMAND ----------
 
-weather_data_wHead = "dbfs:/databricks-datasets/airlines/part-00000"
-weather_data_full= "dbfs:/databricks-datasets/airlines/part-000{0[1-9],1[0-5]}"
-
-fl_first_df=spark.read.format("csv").\
-option("delimiter",",").\
-option("inferschema",True).\
-option("header",True).\
-load(flights_data_wHead)
-
-fl_remaining_df = spark.read.\
-option("header", "false").\
-schema(fl_schema).\
-csv(flights_data_full)
-
-flightsRaw_df = (fl_first.union(fl_first_df)
-                         .fillna("NA")
-                         .filter("Origin = 'ORD'" ).cache())
-
-flightsRaw_df.createOrReplaceTempView("flights_raw")
-
-display(flightsRaw_df)
-
-# COMMAND ----------
-
 # Full Data ... only for use with a cluster on steroids
 #weather_data = "dbfs:/databricks-datasets/airlines"
-weather_data = "dbfs:/databricks-datasets/weather/part-0000[{0-9}]"
+weather_data = "dbfs:/FileStore/data/weather_filtered_chicago/"
 
 # COMMAND ----------
 
-# MAGIC %fs ls dbfs:/databricks-datasets/weather/
+# MAGIC %fs ls dbfs:/FileStore/data/weather_filtered_chicago/
 
 # COMMAND ----------
 
-# MAGIC %sh head -10 /dbfs/databricks-datasets/weather/high_temps
+weather_raw_df=spark.read.csv("dbfs:/FileStore/data/weather_filtered_chicago/",header=True,inferSchema=True)
+weather_raw_df.createOrReplaceTempView("WEATHER_RAW")
+
+weather_df=spark.sql("""
+SELECT *,toDateString(YEAR, MONTH, DAY) DateString 
+FROM
+(
+  SELECT extract(year from date)  as YEAR,
+  extract(month from date) as MONTH,
+  extract(day from date) as DAY,
+  *
+  from WEATHER_RAW)
+""")
+display(weather_df)
 
 # COMMAND ----------
 
-from pyspark.sql.types import * 
+flights_df.printSchema()
+weather_df.printSchema()
 
 # COMMAND ----------
 
-weatherSchema=StructType(
-[
-  StructField("station", StringType(), True),
-  StructField("DateString", StringType(), True),
-  StructField("metric", StringType(), True),
-  StructField("value", IntegerType(), True),
-  StructField("t1", StringType(), True),
-  StructField("t2", StringType(), True),
-  StructField("t3", StringType(), True),
-  StructField("time", StringType(), True)
-])
+display(flights_df)
 
 # COMMAND ----------
 
-weathterRaw_df = (spark.read.format("csv")
-                  .option("delimiter",",")
-                  .option("quote","")
-                  .option("header", "True")
-                  .option("inferSchema",True)
-                  #.schema(weatherSchema)
-                  .load(weather_data))
-                  #.filter("station = 'USW00094846'" ))
-
-weathterRaw_df.createOrReplaceTempView("weather_raw")
-
-display(weathterRaw_df)
+joinedDF = flights_df.join(weather_df, flights_df.DateString == weather_df.DateString)
+display(joinedDF)
