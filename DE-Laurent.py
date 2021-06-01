@@ -19,33 +19,7 @@
 # COMMAND ----------
 
 # MAGIC %sh
-# MAGIC tail -50 /dbfs/databricks-datasets/weather/high_temps
-
-# COMMAND ----------
-
-x=spark.read.csv("dbfs:/databricks-datasets/flights/departuredelays.csv", header=True, sep=',')
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC From Matthieu:
-
-# COMMAND ----------
-
-initial_df = (spark.read
-      .option("header", "true")
-      .option("inferSchema", "true")
-      .csv("dbfs://airlines/part-00000"))
-df_schema = initial_df.schema
-
-remaining_df = (spark.read
-      .option("header", "false")
-      .schema(df_schema)
-      .csv("dbfs://airlines/part-000{0[1-9],1[0-5]}"))
-
-# COMMAND ----------
-
-# MAGIC %fs ls dbfs:/databricks-datasets/airlines
+# MAGIC tail -50 /dbfs/databricks-datasets/weather/high
 
 # COMMAND ----------
 
@@ -142,10 +116,6 @@ display(flightsRaw_df)
 
 # COMMAND ----------
 
-weather_data = "dbfs:/databricks-datasets/airlines"
-
-# COMMAND ----------
-
 # MAGIC %md
 # MAGIC <h3>Quality Control</h3> 
 
@@ -180,3 +150,79 @@ FROM flights_raw """
 flights_df = spark.sql(sql_statement).cache()
 
 flights_df.createOrReplaceTempView("flights")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC <h2> Weather data definition </h2>
+
+# COMMAND ----------
+
+weather_data_wHead = "dbfs:/databricks-datasets/airlines/part-00000"
+weather_data_full= "dbfs:/databricks-datasets/airlines/part-000{0[1-9],1[0-5]}"
+
+fl_first_df=spark.read.format("csv").\
+option("delimiter",",").\
+option("inferschema",True).\
+option("header",True).\
+load(flights_data_wHead)
+
+fl_remaining_df = spark.read.\
+option("header", "false").\
+schema(fl_schema).\
+csv(flights_data_full)
+
+flightsRaw_df = (fl_first.union(fl_first_df)
+                         .fillna("NA")
+                         .filter("Origin = 'ORD'" ).cache())
+
+flightsRaw_df.createOrReplaceTempView("flights_raw")
+
+display(flightsRaw_df)
+
+# COMMAND ----------
+
+# Full Data ... only for use with a cluster on steroids
+#weather_data = "dbfs:/databricks-datasets/airlines"
+weather_data = "dbfs:/databricks-datasets/weather/part-0000[{0-9}]"
+
+# COMMAND ----------
+
+# MAGIC %fs ls dbfs:/databricks-datasets/weather/
+
+# COMMAND ----------
+
+# MAGIC %sh head -10 /dbfs/databricks-datasets/weather/high_temps
+
+# COMMAND ----------
+
+from pyspark.sql.types import * 
+
+# COMMAND ----------
+
+weatherSchema=StructType(
+[
+  StructField("station", StringType(), True),
+  StructField("DateString", StringType(), True),
+  StructField("metric", StringType(), True),
+  StructField("value", IntegerType(), True),
+  StructField("t1", StringType(), True),
+  StructField("t2", StringType(), True),
+  StructField("t3", StringType(), True),
+  StructField("time", StringType(), True)
+])
+
+# COMMAND ----------
+
+weathterRaw_df = (spark.read.format("csv")
+                  .option("delimiter",",")
+                  .option("quote","")
+                  .option("header", "True")
+                  .option("inferSchema",True)
+                  #.schema(weatherSchema)
+                  .load(weather_data))
+                  #.filter("station = 'USW00094846'" ))
+
+weathterRaw_df.createOrReplaceTempView("weather_raw")
+
+display(weathterRaw_df)
