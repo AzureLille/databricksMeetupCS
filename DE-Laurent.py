@@ -1,5 +1,20 @@
 # Databricks notebook source
-# MAGIC %fs ls dbfs:/databricks-datasets/weather/h
+# MAGIC %md
+# MAGIC Source : https://github.com/frenchlam/Airline_ontime_prediction/blob/master/Airline_prediction.scala
+
+# COMMAND ----------
+
+# MAGIC %fs ls dbfs:/databricks-datasets/airlines
+
+# COMMAND ----------
+
+# MAGIC %sh
+# MAGIC head -50 /dbfs/databricks-datasets/airlines/part-00000
+
+# COMMAND ----------
+
+# MAGIC %sh
+# MAGIC ls /dbfs
 
 # COMMAND ----------
 
@@ -26,7 +41,7 @@ df_schema = initial_df.schema
 remaining_df = (spark.read
       .option("header", "false")
       .schema(df_schema)
-      .csv("dbfs://airlines/part-000{0[1-9],1[0-5]}")
+      .csv("dbfs://airlines/part-000{0[1-9],1[0-5]}"))
 
 # COMMAND ----------
 
@@ -34,14 +49,18 @@ remaining_df = (spark.read
 
 # COMMAND ----------
 
-flights_data = "dbfs:/databricks-datasets/airlines"
-# ou celui ci : dbfs:/databricks-datasets/asa/airlines
-weather_data = "dbfs:/databricks-datasets/airlines"
+# MAGIC %md
+# MAGIC <h1>Fun starts here !</h1>
 
 # COMMAND ----------
 
 from pyspark.sql.functions import udf
 from pyspark.sql.types import StringType,DoubleType,IntegerType
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC <h2>UDF Defs</h2>
 
 # COMMAND ----------
 
@@ -87,13 +106,35 @@ spark.udf.register("delay_label",delay_label,IntegerType())
 
 # COMMAND ----------
 
-flightsRaw_df = spark.read.format("csv").\
+# MAGIC %md
+# MAGIC <h2> Flights data definition </h2>
+# MAGIC Files are in CSV format but in multipart with header defined in the first one : dbfs:/databricks-datasets/airlines/part-00000
+# MAGIC So we built our flightsRaw Dataframe in three steps :
+# MAGIC <ol>
+# MAGIC   <li> Reading the first file in order to get the schema</li>
+# MAGIC   <li> Reading the rest of files</li>
+# MAGIC   <li> Merge both dataframes (with union), filtering, fill null values with "NA" and the caching it for future use
+# MAGIC </ol>
+
+# COMMAND ----------
+
+flights_data_wHead = "dbfs:/databricks-datasets/airlines/part-00000"
+flights_data_full= "dbfs:/databricks-datasets/airlines/part-000{0[1-9],1[0-5]}"
+
+fl_first_df=spark.read.format("csv").\
 option("delimiter",",").\
-option("quote","").\
-option("header", "true").\
-option("nullValue", "NA").\
-load(flights_data).\
-filter("Origin = 'ORD'" ).cache()
+option("inferschema",True).\
+option("header",True).\
+load(flights_data_wHead)
+
+fl_remaining_df = spark.read.\
+option("header", "false").\
+schema(fl_schema).\
+csv(flights_data_full)
+
+flightsRaw_df = (fl_first.union(fl_first_df)
+                         .fillna("NA")
+                         .filter("Origin = 'ORD'" ).cache())
 
 flightsRaw_df.createOrReplaceTempView("flights_raw")
 
@@ -101,8 +142,12 @@ display(flightsRaw_df)
 
 # COMMAND ----------
 
+weather_data = "dbfs:/databricks-datasets/airlines"
+
+# COMMAND ----------
+
 # MAGIC %md
-# MAGIC null control
+# MAGIC <h3>Quality Control</h3> 
 
 # COMMAND ----------
 
