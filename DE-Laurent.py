@@ -4,11 +4,6 @@
 
 # COMMAND ----------
 
-# MAGIC %sh
-# MAGIC tail -50 /dbfs/databricks-datasets/weather/high
-
-# COMMAND ----------
-
 # MAGIC %md
 # MAGIC <h1>Fun starts here !</h1>
 
@@ -97,13 +92,11 @@ schema(fl_schema).\
 csv(flights_data_full)
 
 flightsRaw_df = (fl_first_df.union(fl_remaining_df)
-                         .fillna("NA")
-                         .fillna(0,subset=["CRSDepTime"])
                          .filter("Origin = 'ORD'" ).cache())
 
 flightsRaw_df.createOrReplaceTempView("flights_raw")
 
-display(flightsRaw_df.select("CRSDepTime").distinct())
+display(flightsRaw_df)
 
 # COMMAND ----------
 
@@ -118,7 +111,7 @@ display(flightsRaw_df.select([count(when(isnan(c), c)).alias(c) for c in flights
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC cleanup and enrich flights table with label
+# MAGIC <h3>Cleanup and enrich flights view with label</h3>
 
 # COMMAND ----------
 
@@ -146,10 +139,6 @@ flights_df.createOrReplaceTempView("flights")
 
 # MAGIC %sql
 # MAGIC select * from flights;
-
-# COMMAND ----------
-
-spark.sql("SELECT * from flights").show()
 
 # COMMAND ----------
 
@@ -182,15 +171,6 @@ FROM
   from WEATHER_RAW)
 """)
 display(weather_df)
-
-# COMMAND ----------
-
-flights_df.printSchema()
-weather_df.printSchema()
-
-# COMMAND ----------
-
-display(flights_df)
 
 # COMMAND ----------
 
