@@ -5,7 +5,7 @@
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC <h1>Fun starts here ! test </h1>
+# MAGIC <h1>Fun starts here !</h1>
 
 # COMMAND ----------
 
