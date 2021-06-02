@@ -1,4 +1,9 @@
 # Databricks notebook source
+with open("/dbfs/databricks-datasets/airlines/README.md") as f:
+  print(f.read())
+
+# COMMAND ----------
+
 # MAGIC %md
 # MAGIC Inspired by : https://github.com/frenchlam/Airline_ontime_prediction/blob/master/Airline_prediction.scala
 
@@ -76,23 +81,27 @@ spark.udf.register("delay_label",delay_label,IntegerType())
 flights_data_wHead = "dbfs:/databricks-datasets/airlines/part-00000"
 flights_data_full= "dbfs:/databricks-datasets/airlines/part-009[0-5][0-9]" ## Here we got date from 2003 to 2008 (and a bunch of older ones)
 
-fl_first_df=spark.read.format("csv").\
-option("delimiter",",").\
-option("inferschema",True).\
-option("header",True).\
-option("nullValue", "NA").\
-load(flights_data_wHead)
+fl_first_df= (spark.read.format("csv")
+              .option("delimiter",",")
+              .option("inferschema",True)
+              .option("header",True)
+              .option("nullValue", "NA")
+              .load(flights_data_wHead)
+             )
 
 fl_schema=fl_first_df.schema
 
-fl_remaining_df = spark.read.\
-option("header", "false").\
-option("nullValue", "NA").\
-schema(fl_schema).\
-csv(flights_data_full)
+fl_remaining_df = (spark.read
+                   .option("header", "false")
+                   .option("nullValue", "NA")
+                   .schema(fl_schema)
+                   .csv(flights_data_full)
+                  )
 
 flightsRaw_df = (fl_first_df.union(fl_remaining_df)
-                         .filter("Origin = 'ORD'" ).cache())
+                 .filter("Origin = 'ORD'" )
+                 .cache()
+                )
 
 flightsRaw_df.createOrReplaceTempView("flights_raw")
 
@@ -116,20 +125,20 @@ display(flightsRaw_df.select([count(when(isnan(c), c)).alias(c) for c in flights
 # COMMAND ----------
 
 sql_statement = """SELECT cast(Year as int) Year, 
-cast(Month as int) Month, 
-cast(DayofMonth as int) Day, 
-cast(DayOfWeek as int) DayOfWeek, 
-toDateString(Year, Month, DayofMonth) DateString, 
-get_hour_base10(cast(CRSDepTime as string)) decimal_DepTime, 
-UniqueCarrier,  
-cast(FlightNum as int) FlightNum,  
-IFNULL(TailNum, 'N/A') AS TailNum, 
-Origin ,  
-Dest , 
-cast(Distance as int) Distance, 
-IFNULL(cast(DepDelay as int ), 0) delay, 
-delay_label(DepDelay) label  
-FROM flights_raw """
+                   cast(Month as int) Month, 
+                   cast(DayofMonth as int) Day, 
+                   cast(DayOfWeek as int) DayOfWeek, 
+                   toDateString(Year, Month, DayofMonth) DateString, 
+                   get_hour_base10(cast(CRSDepTime as string)) decimal_DepTime, 
+                   UniqueCarrier,  
+                   cast(FlightNum as int) FlightNum,  
+                   IFNULL(TailNum, 'N/A') AS TailNum, 
+                   Origin ,  
+                   Dest , 
+                   cast(Distance as int) Distance, 
+                   IFNULL(cast(DepDelay as int ), 0) delay, 
+                   delay_label(DepDelay) label  
+                   FROM flights_raw """
 
 flights_df = spark.sql(sql_statement).cache()
 
@@ -161,14 +170,15 @@ weather_raw_df=spark.read.csv("dbfs:/FileStore/data/weather_filtered_chicago/",h
 weather_raw_df.createOrReplaceTempView("WEATHER_RAW")
 
 weather_df=spark.sql("""
-SELECT *,toDateString(YEAR, MONTH, DAY) DateString 
-FROM
-(
-  SELECT extract(year from date)  as YEAR,
-  extract(month from date) as MONTH,
-  extract(day from date) as DAY,
-  *
-  from WEATHER_RAW)
+                     SELECT *,toDateString(YEAR, MONTH, DAY) DateString 
+                     FROM
+                     (
+                       SELECT extract(year from date)  as YEAR,
+                       extract(month from date) as MONTH,
+                       extract(day from date) as DAY,
+                       *
+                       from WEATHER_RAW
+                     )
 """)
 display(weather_df)
 
@@ -205,4 +215,4 @@ flights_df.write.saveAsTable("meetupdb.flights_delta",format="delta")
 # COMMAND ----------
 
 # MAGIC %sql
-# MAGIC select distinct(dest) from meetupdb.flights_delta;
+# MAGIC select * from meetupdb.flights_delta;
