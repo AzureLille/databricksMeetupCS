@@ -36,7 +36,7 @@ def get_hour_base10(t: str) -> float :
   le=len(t)
   
   if (le<3 or le>4):
-    raise Exception("get_hour_base10(t) exception : t length should be 3 or 4")
+    raise Exception("temp_time "+temp_time+"get_hour_base10(t) exception : t length should be 3 or 4")
     
   if(le==3):
     temp_time=str(0)+t
@@ -79,7 +79,10 @@ spark.udf.register("delay_label",delay_label,IntegerType())
 # COMMAND ----------
 
 flights_data_wHead = "dbfs:/databricks-datasets/airlines/part-00000"
-flights_data_full= "dbfs:/databricks-datasets/airlines/part-009[0-5][0-9]" ## Here we got date from 2003 to 2008 (and a bunch of older ones)
+# With a single node cluster ... Play this
+#flights_data_full= "dbfs:/databricks-datasets/airlines/part-009[0-5][0-9]" ## Here we got date from 2003 to 2008 (and a bunch of older ones)
+# With a multinode cluster ... Play this (Better run on 4 nodes)
+flights_data_full= "dbfs:/databricks-datasets/airlines/part-00[5-9][0-9][0-9]" ## Here we got date from 2003 to 2008 (and a bunch of older ones)
 
 fl_first_df= (spark.read.format("csv")
               .option("delimiter",",")
@@ -129,7 +132,7 @@ sql_statement = """SELECT cast(Year as int) Year,
                    cast(DayofMonth as int) Day, 
                    cast(DayOfWeek as int) DayOfWeek, 
                    toDateString(Year, Month, DayofMonth) DateString, 
-                   get_hour_base10(cast(CRSDepTime as string)) decimal_DepTime, 
+                   get_hour_base10(lpad(cast(CRSDepTime as string),4,'0')) decimal_DepTime, 
                    UniqueCarrier,  
                    cast(FlightNum as int) FlightNum,  
                    IFNULL(TailNum, 'N/A') AS TailNum, 
@@ -216,3 +219,8 @@ flights_df.write.saveAsTable("meetupdb.flights_delta",format="delta")
 
 # MAGIC %sql
 # MAGIC select * from meetupdb.flights_delta;
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC select count(*) from meetupdb.flights_delta;
