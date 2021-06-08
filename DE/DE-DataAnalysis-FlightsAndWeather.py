@@ -50,7 +50,7 @@ iata.createOrReplaceTempView("IATA")
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC <b> More charts and designs here </b>
+# MAGIC ## More charts and examples here:
 # MAGIC <ul>
 # MAGIC   <li> In Python : https://docs.databricks.com/_static/notebooks/charts-and-graphs-python.html </li>
 # MAGIC   <li> In Scala  : https://docs.databricks.com/_static/notebooks/charts-and-graphs-scala.html </li>
