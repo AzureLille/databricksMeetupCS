@@ -80,9 +80,10 @@ spark.udf.register("delay_label",delay_label,IntegerType())
 
 flights_data_wHead = "dbfs:/databricks-datasets/airlines/part-00000"
 # With a single node cluster ... Play this
-#flights_data_full= "dbfs:/databricks-datasets/airlines/part-009[0-5][0-9]" ## Here we got date from 2003 to 2008 (and a bunch of older ones)
+flights_data_full= "dbfs:/databricks-datasets/airlines/part-009[0-5][0-9]" ## Here we got date from 2003 to 2008 (and a bunch of older ones)
+
 # With a multinode cluster ... Play this (Better run on 4 nodes)
-flights_data_full= "dbfs:/databricks-datasets/airlines/part-00[5-9][0-9][0-9]" ## Here we got date from 2003 to 2008 (and a bunch of older ones)
+#flights_data_full= "dbfs:/databricks-datasets/airlines/part-00[5-9][0-9][0-9]" ## Here we got date from 2003 to 2008 (and a bunch of older ones)
 
 fl_first_df= (spark.read.format("csv")
               .option("delimiter",",")
@@ -224,3 +225,10 @@ flights_df.write.saveAsTable("meetupdb.flights_delta",format="delta")
 
 # MAGIC %sql
 # MAGIC select count(*) from meetupdb.flights_delta;
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC # TODO
+# MAGIC Préparer un job Cluster (filtre sur l'année en widget)
+# MAGIC Plus blabla sur génération de package, wheel etc.
