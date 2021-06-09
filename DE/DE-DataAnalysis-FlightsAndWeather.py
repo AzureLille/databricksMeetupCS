@@ -41,11 +41,59 @@ iata.createOrReplaceTempView("IATA")
 # COMMAND ----------
 
 # MAGIC %sql
-# MAGIC select year,count(1) as delayed,sum(delay) as delayed_seconds
+# MAGIC create or replace temporary view FD
+# MAGIC as select year,count(1) as delayed,sum(delay) as delayed_seconds
 # MAGIC from  meetupdb.flights_delta
 # MAGIC where delay>0
 # MAGIC group by year
 # MAGIC order by 1;
+# MAGIC 
+# MAGIC select * from fd;
+
+# COMMAND ----------
+
+myfd=spark.read.table("FD").toPandas()
+print(myfd.columns)
+
+# COMMAND ----------
+
+import plotly.graph_objects as go
+from plotly.graph_objects import Scatter
+
+fig = go.Figure()
+fig.add_trace(go.Scatter(x=myfd.year, y=myfd.delayed, name="Delayed flights", line_color="blue"))
+fig.add_trace(go.Scatter(x=myfd.year, y=myfd.delayed_seconds, name="Delayed seconds", line_color="red", yaxis="y2"))
+
+#fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='')
+fig.update_xaxes(tickangle=45,
+                 tickmode = 'array',
+                 tickvals = myfd['year'],
+                 ticktext= myfd['year'])
+
+fig.update_layout(
+  autosize=False,
+  height=500,
+  width=750,
+  xaxis=dict(
+    title="Year"
+  ),
+  yaxis=dict(
+        title="<b>delayed flights</b>",
+        showgrid=True,
+        gridwidth=1,
+        gridcolor='lightblue'
+  ),
+  yaxis2=dict(
+        title="<b>delayed seconds</b>",
+         anchor="x",
+        overlaying="y",
+        side="right",
+        showgrid=True,
+        gridwidth=1,
+        gridcolor='lightpink'
+    )
+)
+fig.show()
 
 # COMMAND ----------
 

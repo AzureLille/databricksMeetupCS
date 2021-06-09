@@ -80,10 +80,10 @@ spark.udf.register("delay_label",delay_label,IntegerType())
 
 flights_data_wHead = "dbfs:/databricks-datasets/airlines/part-00000"
 # With a single node cluster ... Play this
-flights_data_full= "dbfs:/databricks-datasets/airlines/part-009[0-5][0-9]" ## Here we got date from 2003 to 2008 (and a bunch of older ones)
+#flights_data_full= "dbfs:/databricks-datasets/airlines/part-009[0-5][0-9]" ## Here we got date from 2003 to 2008 (and a bunch of older ones)
 
 # With a multinode cluster ... Play this (Better run on 4 nodes)
-#flights_data_full= "dbfs:/databricks-datasets/airlines/part-00[5-9][0-9][0-9]" ## Here we got date from 2003 to 2008 (and a bunch of older ones)
+flights_data_full= "dbfs:/databricks-datasets/airlines/part-00[5-9][0-9][0-9]" ## Here we got date from 2003 to 2008 (and a bunch of older ones)
 
 fl_first_df= (spark.read.format("csv")
               .option("delimiter",",")
@@ -160,8 +160,6 @@ flights_df.createOrReplaceTempView("flights")
 
 # COMMAND ----------
 
-# Full Data ... only for use with a cluster on steroids
-#weather_data = "dbfs:/databricks-datasets/airlines"
 weather_data = "dbfs:/FileStore/data/weather_filtered_chicago/"
 
 # COMMAND ----------
@@ -188,14 +186,10 @@ display(weather_df)
 
 # COMMAND ----------
 
-flights_df=flights_df.withColumnRenamed("DateString","f_datestring").withColumnRenamed("YEAR","f_year")
 weather_df=weather_df.withColumnRenamed("Datestring","w_datestring").withColumnRenamed("YEAR","w_year")
 
 joinedDF = (
-  (flights_df.join(weather_df, flights_df.f_datestring == weather_df.w_datestring)).drop("MONTH","DAY","flights_df.f_DateString", "flights_df.f_YEAR")
-   .withColumnRenamed("f_datestring","DateString")
-   .withColumnRenamed("f_year","YEAR")
-)
+  (flights_df.join(weather_df, flights_df.DateString == weather_df.w_datestring)).drop("MONTH","DAY","w_DateString", "w_YEAR"))
           
 display(joinedDF)
 
@@ -219,15 +213,11 @@ display(joinedDF)
 
 # COMMAND ----------
 
-joinedDF.printSchema()
+joinedDF.write.partitionBy("YEAR").saveAsTable("meetupdb.flight_and_weather_parquet", format="parquet")
+joinedDF.write.partitionBy("YEAR").saveAsTable("meetupdb.flight_and_weather_delta", format="delta")
 
-# COMMAND ----------
-
-joinedDF.write.saveAsTable("meetupdb.flight_and_weather_parquet", format="parquet")
-joinedDF.write.saveAsTable("meetupdb.flight_and_weather_delta", format="delta")
-
-flights_df.write.saveAsTable("meetupdb.flights_parquet",format="parquet")
-flights_df.write.saveAsTable("meetupdb.flights_delta",format="delta")
+flights_df.write.partitionBy("YEAR").saveAsTable("meetupdb.flights_parquet",format="parquet")
+flights_df.write.partitionBy("YEAR").saveAsTable("meetupdb.flights_delta",format="delta")
 
 # COMMAND ----------
 
@@ -238,7 +228,7 @@ flights_df.write.saveAsTable("meetupdb.flights_delta",format="delta")
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## ZOrder Optimization
+# MAGIC ## Delta ZOrder Optimization
 # MAGIC <img src="https://databricks.com/wp-content/uploads/2018/07/Screen-Shot-2018-07-30-at-2.03.55-PM.png">
 # MAGIC <p>
 # MAGIC <ul>
@@ -252,16 +242,8 @@ flights_df.write.saveAsTable("meetupdb.flights_delta",format="delta")
 
 # MAGIC %sql
 # MAGIC create or replace table meetupdb.flight_and_weather_delta_zo partitioned by (year) as select * from meetupdb.flight_and_weather_delta ;
-# MAGIC optimize meetupdb.flight_and_weather_delta_zo ZORDER BY (datestring,dest);
+# MAGIC optimize meetupdb.flight_and_weather_delta_zo ZORDER BY (dest,datestring);
 # MAGIC ANALYZE TABLE meetupdb.flight_and_weather_delta_zo COMPUTE STATISTICS FOR ALL COLUMNS;
-
-# COMMAND ----------
-
-# MAGIC %sql describe table formatted meetupdb.flight_and_weather_delta_zo
-
-# COMMAND ----------
-
-# MAGIC %fs ls dbfs:/user/hive/warehouse/meetupdb.db/flight_and_weather_delta_zo
 
 # COMMAND ----------
 
