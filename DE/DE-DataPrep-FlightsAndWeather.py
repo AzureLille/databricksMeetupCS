@@ -188,7 +188,14 @@ display(weather_df)
 
 # COMMAND ----------
 
-joinedDF = (flights_df.join(weather_df, flights_df.DateString == weather_df.DateString)).drop("DateString","YEAR","MONTH","DAY")
+flights_df=flights_df.withColumnRenamed("DateString","f_datestring").withColumnRenamed("YEAR","f_year")
+weather_df=weather_df.withColumnRenamed("Datestring","w_datestring").withColumnRenamed("YEAR","w_year")
+
+joinedDF = (
+  (flights_df.join(weather_df, flights_df.f_datestring == weather_df.w_datestring)).drop("MONTH","DAY","flights_df.f_DateString", "flights_df.f_YEAR")
+   .withColumnRenamed("f_datestring","DateString")
+   .withColumnRenamed("f_year","YEAR")
+)
           
 display(joinedDF)
 
@@ -204,9 +211,15 @@ display(joinedDF)
 # MAGIC 
 # MAGIC DROP TABLE IF EXISTS meetupdb.flight_and_weather_parquet;
 # MAGIC DROP TABLE IF EXISTS meetupdb.flight_and_weather_delta;
+# MAGIC DROP TABLE IF EXISTS meetupdb.flight_and_weather_delta_zo;
 # MAGIC 
 # MAGIC DROP TABLE IF EXISTS meetupdb.flights_parquet;
 # MAGIC DROP TABLE IF EXISTS meetupdb.flights_delta;
+# MAGIC DROP TABLE IF EXISTS meetupdb.flights_delta_zo;
+
+# COMMAND ----------
+
+joinedDF.printSchema()
 
 # COMMAND ----------
 
@@ -219,12 +232,36 @@ flights_df.write.saveAsTable("meetupdb.flights_delta",format="delta")
 # COMMAND ----------
 
 # MAGIC %sql
-# MAGIC select * from meetupdb.flights_delta;
+# MAGIC ANALYZE TABLE meetupdb.flight_and_weather_delta COMPUTE STATISTICS FOR ALL COLUMNS;
+# MAGIC ANALYZE TABLE meetupdb.flights_delta COMPUTE STATISTICS FOR ALL COLUMNS;
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## ZOrder Optimization
+# MAGIC <img src="https://databricks.com/wp-content/uploads/2018/07/Screen-Shot-2018-07-30-at-2.03.55-PM.png">
+# MAGIC <p>
+# MAGIC <ul>
+# MAGIC   <li>Multidimensional clustering</li>
+# MAGIC   <li>Maps multiple clumns to 1-dimensional binary space</li>
+# MAGIC   <li>Effectiveness falls off after 3 to 5 columns</li>
+# MAGIC </ul>
+# MAGIC </p>
 
 # COMMAND ----------
 
 # MAGIC %sql
-# MAGIC select count(*) from meetupdb.flights_delta;
+# MAGIC create or replace table meetupdb.flight_and_weather_delta_zo partitioned by (year) as select * from meetupdb.flight_and_weather_delta ;
+# MAGIC optimize meetupdb.flight_and_weather_delta_zo ZORDER BY (datestring,dest);
+# MAGIC ANALYZE TABLE meetupdb.flight_and_weather_delta_zo COMPUTE STATISTICS FOR ALL COLUMNS;
+
+# COMMAND ----------
+
+# MAGIC %sql describe table formatted meetupdb.flight_and_weather_delta_zo
+
+# COMMAND ----------
+
+# MAGIC %fs ls dbfs:/user/hive/warehouse/meetupdb.db/flight_and_weather_delta_zo
 
 # COMMAND ----------
 
