@@ -42,7 +42,7 @@ iata.createOrReplaceTempView("IATA")
 
 # MAGIC %sql
 # MAGIC create or replace temporary view FD
-# MAGIC as select year,count(1) as delayed,sum(delay) as delayed_seconds
+# MAGIC as select year,count(1) as delayed,sum(delay) as delays_in_seconds
 # MAGIC from  meetupdb.flights_delta
 # MAGIC where delay>0
 # MAGIC group by year
@@ -62,18 +62,14 @@ from plotly.graph_objects import Scatter
 
 fig = go.Figure()
 fig.add_trace(go.Scatter(x=myfd.year, y=myfd.delayed, name="Delayed flights", line_color="blue"))
-fig.add_trace(go.Scatter(x=myfd.year, y=myfd.delayed_seconds, name="Delayed seconds", line_color="red", yaxis="y2"))
+fig.add_trace(go.Scatter(x=myfd.year, y=myfd.delays_in_seconds, name="Delays in seconds", line_color="red", yaxis="y2"))
 
-#fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='')
 fig.update_xaxes(tickangle=45,
                  tickmode = 'array',
                  tickvals = myfd['year'],
                  ticktext= myfd['year'])
 
 fig.update_layout(
-  autosize=False,
-  height=500,
-  width=750,
   xaxis=dict(
     title="Year"
   ),
@@ -84,7 +80,7 @@ fig.update_layout(
         gridcolor='lightblue'
   ),
   yaxis2=dict(
-        title="<b>delayed seconds</b>",
+        title="<b>delays in seconds</b>",
          anchor="x",
         overlaying="y",
         side="right",
@@ -103,7 +99,3 @@ fig.show()
 # MAGIC   <li> In Python : https://docs.databricks.com/_static/notebooks/charts-and-graphs-python.html </li>
 # MAGIC   <li> In Scala  : https://docs.databricks.com/_static/notebooks/charts-and-graphs-scala.html </li>
 # MAGIC   </ul>
-
-# COMMAND ----------
-
-
