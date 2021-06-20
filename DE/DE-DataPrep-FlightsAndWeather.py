@@ -14,15 +14,13 @@ with open("/dbfs/databricks-datasets/airlines/README.md") as f:
 
 # COMMAND ----------
 
-from pyspark.sql.functions import udf
-from pyspark.sql.types import StringType,DoubleType,IntegerType
-
-# COMMAND ----------
-
 # MAGIC %md
 # MAGIC <h2>UDF Defs</h2>
 
 # COMMAND ----------
+
+from pyspark.sql.functions import udf
+from pyspark.sql.types import StringType,DoubleType,IntegerType
 
 def toDateString(year: str, month: str, day: str) -> str :
   Y = '{0:04d}'.format(int(year))
@@ -42,11 +40,13 @@ def get_hour_base10(t: str) -> float :
     temp_time=str(0)+t
   
   hour=int(temp_time[0:2])
-  if (hour<0 or hour>=24):
+  if (hour<0 or hour>=24) : 
+    print(hour)
     raise Exception("get_hour_base10(t) exception : hour should be between 0 and 23")
     
   minute=int(temp_time[2:4])
   if (minute<0 or minute>=60):
+    print(minute)
     raise Exception("get_hour_base10(t) exception : minute should be between 0 and 59")
   
   dec_time=hour+(minute/60)
@@ -90,6 +90,7 @@ fl_first_df= (spark.read.format("csv")
               .option("inferschema",True)
               .option("header",True)
               .option("nullValue", "NA")
+              
               .load(flights_data_wHead)
              )
 
@@ -103,7 +104,7 @@ fl_remaining_df = (spark.read
                   )
 
 flightsRaw_df = (fl_first_df.union(fl_remaining_df)
-                 .filter("Origin = 'ORD'" )
+                 .filter("Origin = 'ORD' OR Origin = 'SEA'" )
                  .cache()
                 )
 
@@ -119,6 +120,11 @@ display(flightsRaw_df)
 
 # COMMAND ----------
 
+#save data as a table - reusable using SQL
+flightsRaw_df.write.mode("overwrite").format("DELTA").saveAsTable('meetupdb.flights_bronze')
+
+# COMMAND ----------
+
 # MAGIC %md
 # MAGIC <h3>Quality Control</h3> 
 
@@ -126,10 +132,6 @@ display(flightsRaw_df)
 
 from pyspark.sql.functions import count,when,isnan
 display(flightsRaw_df.select([count(when(isnan(c), c)).alias(c) for c in flightsRaw_df.columns]))
-
-# COMMAND ----------
-
-flightsRaw_df.write.format("DELTA").saveAsTable('meetupdb.flights_bronze')
 
 # COMMAND ----------
 
@@ -180,27 +182,29 @@ flightsRaw_df.write.format("DELTA").saveAsTable('meetupdb.flights_bronze')
 
 # COMMAND ----------
 
-# MAGIC %fs 
-# MAGIC ls '/FileStore/data/weather_filtered_chicago/'
+# weather_raw_df=spark.read.csv("dbfs:/FileStore/data/weather_filtered_chicago/",header=True,inferSchema=True)
+# weather_raw_df.createOrReplaceTempView("WEATHER_RAW")
+
+# weather_df=spark.sql("""
+#                      SELECT *,toDateString(YEAR, MONTH, DAY) DateString 
+#                      FROM
+#                      (
+#                        SELECT extract(year from date)  as YEAR,
+#                        extract(month from date) as MONTH,
+#                        extract(day from date) as DAY,
+#                        *
+#                        from WEATHER_RAW
+#                      )
+# """)
+# weather_df.createOrReplaceTempView("WEATHER_DATA")
+# display(weather_df)
 
 # COMMAND ----------
 
-weather_raw_df=spark.read.csv("dbfs:/FileStore/data/weather_filtered_chicago/",header=True,inferSchema=True)
-weather_raw_df.createOrReplaceTempView("WEATHER_RAW")
-
-weather_df=spark.sql("""
-                     SELECT *,toDateString(YEAR, MONTH, DAY) DateString 
-                     FROM
-                     (
-                       SELECT extract(year from date)  as YEAR,
-                       extract(month from date) as MONTH,
-                       extract(day from date) as DAY,
-                       *
-                       from WEATHER_RAW
-                     )
-""")
-weather_df.createOrReplaceTempView("WEATHER_DATA")
-display(weather_df)
+# MAGIC %sql 
+# MAGIC --let's take a look at the weather data
+# MAGIC USE meetupdb ; 
+# MAGIC SELECT * FROM weather_data
 
 # COMMAND ----------
 
@@ -210,11 +214,12 @@ display(weather_df)
 # MAGIC DROP TABLE IF EXISTS flights_gold ;
 # MAGIC 
 # MAGIC CREATE TABLE IF NOT EXISTS flights_gold
+# MAGIC 
 # MAGIC USING DELTA
 # MAGIC PARTITIONED BY (year)
 # MAGIC AS (
 # MAGIC     SELECT a.*, b.STATION, b.DATE, b.PREP, b.SNOW, b.SNWD, b.TMIN, b.TMAX
-# MAGIC     FROM flights_silver a JOIN WEATHER_DATA b ON a.DateString = b.DateString
+# MAGIC     FROM flights_silver a JOIN WEATHER_DATA b ON (a.DateString = b.DateString and a.Origin = b.Airport) 
 # MAGIC     ORDER BY b.DateString
 # MAGIC )
 
@@ -295,8 +300,14 @@ display(weather_df)
 # MAGIC USING DELTA
 # MAGIC PARTITIONED BY (year)
 # MAGIC AS (
-# MAGIC     SELECT a.* from flights_gold
+# MAGIC     SELECT * from flights_gold
 # MAGIC )
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC USE meetupdb ;
+# MAGIC OPTIMIZE flights_gold_ml ZORDER BY (datestring,dest);
 
 # COMMAND ----------
 
