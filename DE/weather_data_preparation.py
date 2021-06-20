@@ -3,7 +3,11 @@ from pyspark.sql.functions import trim
 
 # COMMAND ----------
 
-raw_df=spark.read.csv('dbfs:/FileStore/data/weather_raw_chicago.csv', inferSchema=True,header=True).cache()
+# MAGIC %fs ls /FileStore/data/
+
+# COMMAND ----------
+
+raw_df=spark.read.csv('dbfs:/FileStore/data/weather-raw-chicago-hourly.csv', inferSchema=True,header=True).cache()
 raw_df.createOrReplaceTempView("RAW_DF")
 
 # COMMAND ----------

@@ -79,9 +79,9 @@ spark.udf.register("delay_label",delay_label,IntegerType())
 # COMMAND ----------
 
 flights_data_wHead = "dbfs:/databricks-datasets/airlines/part-00000"
+
 # With a single node cluster ... Play this
 #flights_data_full= "dbfs:/databricks-datasets/airlines/part-009[0-5][0-9]" ## Here we got date from 2003 to 2008 (and a bunch of older ones)
-
 # With a multinode cluster ... Play this (Better run on 4 nodes)
 flights_data_full= "dbfs:/databricks-datasets/airlines/part-00[5-9][0-9][0-9]" ## Here we got date from 2003 to 2008 (and a bunch of older ones)
 
@@ -113,6 +113,12 @@ display(flightsRaw_df)
 
 # COMMAND ----------
 
+# MAGIC %sql
+# MAGIC CREATE DATABASE IF NOT EXISTS meetupdb 
+# MAGIC LOCATION "dbfs:/FileStore/meetupdb/"
+
+# COMMAND ----------
+
 # MAGIC %md
 # MAGIC <h3>Quality Control</h3> 
 
@@ -123,35 +129,49 @@ display(flightsRaw_df.select([count(when(isnan(c), c)).alias(c) for c in flights
 
 # COMMAND ----------
 
+flightsRaw_df.write.format("DELTA").saveAsTable('meetupdb.flights_bronze')
+
+# COMMAND ----------
+
 # MAGIC %md
 # MAGIC <h3>Cleanup and enrich flights view with label</h3>
 
 # COMMAND ----------
 
-sql_statement = """SELECT cast(Year as int) Year, 
-                   cast(Month as int) Month, 
-                   cast(DayofMonth as int) Day, 
-                   cast(DayOfWeek as int) DayOfWeek, 
-                   toDateString(Year, Month, DayofMonth) DateString, 
-                   get_hour_base10(lpad(cast(CRSDepTime as string),4,'0')) decimal_DepTime, 
-                   UniqueCarrier,  
-                   cast(FlightNum as int) FlightNum,  
-                   IFNULL(TailNum, 'N/A') AS TailNum, 
-                   Origin ,  
-                   Dest , 
-                   cast(Distance as int) Distance, 
-                   IFNULL(cast(DepDelay as int ), 0) delay, 
-                   delay_label(DepDelay) label  
-                   FROM flights_raw """
-
-flights_df = spark.sql(sql_statement).cache()
-
-flights_df.createOrReplaceTempView("flights")
+# MAGIC %sql
+# MAGIC use  meetupdb ;
+# MAGIC DROP TABLE IF EXISTS flights_silver;
+# MAGIC 
+# MAGIC CREATE TABLE flights_silver
+# MAGIC USING DELTA
+# MAGIC PARTITIONED BY (year)
+# MAGIC AS (
+# MAGIC     SELECT cast(Year as int) Year, 
+# MAGIC             cast(Month as int) Month, 
+# MAGIC             cast(DayofMonth as int) Day, 
+# MAGIC             cast(DayOfWeek as int) DayOfWeek, 
+# MAGIC             toDateString(Year, Month, DayofMonth) DateString, 
+# MAGIC             get_hour_base10(lpad(cast(CRSDepTime as string),4,'0')) decimal_DepTime, 
+# MAGIC             UniqueCarrier,  
+# MAGIC             cast(FlightNum as int) FlightNum,  
+# MAGIC             IFNULL(TailNum, 'N/A') AS TailNum, 
+# MAGIC             Origin ,  
+# MAGIC             Dest , 
+# MAGIC             cast(Distance as int) Distance, 
+# MAGIC             IFNULL(cast(DepDelay as int ), 0) delay, 
+# MAGIC             delay_label(DepDelay) label  
+# MAGIC     FROM flights_raw
+# MAGIC     ORDER BY DateString
+# MAGIC     );
+# MAGIC 
+# MAGIC --#flights_df = spark.sql(sql_statement).cache()
+# MAGIC 
+# MAGIC --flights_df.createOrReplaceTempView("flights")
 
 # COMMAND ----------
 
 # MAGIC %sql
-# MAGIC select * from flights;
+# MAGIC select * from flights_silver limit 100;
 
 # COMMAND ----------
 
@@ -160,11 +180,8 @@ flights_df.createOrReplaceTempView("flights")
 
 # COMMAND ----------
 
-weather_data = "dbfs:/FileStore/data/weather_filtered_chicago/"
-
-# COMMAND ----------
-
-# MAGIC %fs ls dbfs:/FileStore/data/weather_filtered_chicago/
+# MAGIC %fs 
+# MAGIC ls '/FileStore/data/weather_filtered_chicago/'
 
 # COMMAND ----------
 
@@ -182,16 +199,34 @@ weather_df=spark.sql("""
                        from WEATHER_RAW
                      )
 """)
+weather_df.createOrReplaceTempView("WEATHER_DATA")
 display(weather_df)
 
 # COMMAND ----------
 
-weather_df=weather_df.withColumnRenamed("Datestring","w_datestring").withColumnRenamed("YEAR","w_year")
+# DBTITLE 1,Join Weather and flights 
+# MAGIC %sql
+# MAGIC use  meetupdb ;
+# MAGIC DROP TABLE IF EXISTS flights_gold ;
+# MAGIC 
+# MAGIC CREATE TABLE IF NOT EXISTS flights_gold
+# MAGIC USING DELTA
+# MAGIC PARTITIONED BY (year)
+# MAGIC AS (
+# MAGIC     SELECT a.*, b.STATION, b.DATE, b.PREP, b.SNOW, b.SNWD, b.TMIN, b.TMAX
+# MAGIC     FROM flights_silver a JOIN WEATHER_DATA b ON a.DateString = b.DateString
+# MAGIC     ORDER BY b.DateString
+# MAGIC )
 
-joinedDF = (
-  (flights_df.join(weather_df, flights_df.DateString == weather_df.w_datestring)).drop("MONTH","DAY","w_DateString", "w_YEAR"))
+# COMMAND ----------
+
+# flights_df = spark.sql('''select * from meetupdb.flights_silver''')
+# weather_df=weather_df.withColumnRenamed("Datestring","w_datestring").withColumnRenamed("YEAR","w_year")
+
+# joinedDF = (
+#   (flights_df.join(weather_df, flights_df.DateString == weather_df.w_datestring)).drop("MONTH","DAY","w_DateString", "w_YEAR"))
           
-display(joinedDF)
+# display(joinedDF)
 
 # COMMAND ----------
 
@@ -201,29 +236,29 @@ display(joinedDF)
 # COMMAND ----------
 
 # MAGIC %sql
-# MAGIC CREATE DATABASE IF NOT EXISTS meetupdb;
+# MAGIC -- CREATE DATABASE IF NOT EXISTS meetupdb;
 # MAGIC 
-# MAGIC DROP TABLE IF EXISTS meetupdb.flight_and_weather_parquet;
-# MAGIC DROP TABLE IF EXISTS meetupdb.flight_and_weather_delta;
-# MAGIC DROP TABLE IF EXISTS meetupdb.flight_and_weather_delta_zo;
+# MAGIC -- DROP TABLE IF EXISTS meetupdb.flight_and_weather_parquet;
+# MAGIC -- DROP TABLE IF EXISTS meetupdb.flight_and_weather_delta;
+# MAGIC -- DROP TABLE IF EXISTS meetupdb.flight_and_weather_delta_zo;
 # MAGIC 
-# MAGIC DROP TABLE IF EXISTS meetupdb.flights_parquet;
-# MAGIC DROP TABLE IF EXISTS meetupdb.flights_delta;
-# MAGIC DROP TABLE IF EXISTS meetupdb.flights_delta_zo;
+# MAGIC -- DROP TABLE IF EXISTS meetupdb.flights_parquet;
+# MAGIC -- DROP TABLE IF EXISTS meetupdb.flights_delta;
+# MAGIC -- DROP TABLE IF EXISTS meetupdb.flights_delta_zo;
 
 # COMMAND ----------
 
-joinedDF.write.partitionBy("YEAR").saveAsTable("meetupdb.flight_and_weather_parquet", format="parquet")
-joinedDF.write.partitionBy("YEAR").saveAsTable("meetupdb.flight_and_weather_delta", format="delta")
+# joinedDF.write.partitionBy("YEAR").saveAsTable("meetupdb.flight_and_weather_parquet", format="parquet")
+# joinedDF.write.partitionBy("YEAR").saveAsTable("meetupdb.flight_and_weather_delta", format="delta")
 
-flights_df.write.partitionBy("YEAR").saveAsTable("meetupdb.flights_parquet",format="parquet")
-flights_df.write.partitionBy("YEAR").saveAsTable("meetupdb.flights_delta",format="delta")
+# flights_df.write.partitionBy("YEAR").saveAsTable("meetupdb.flights_parquet",format="parquet")
+# flights_df.write.partitionBy("YEAR").saveAsTable("meetupdb.flights_delta",format="delta")
 
 # COMMAND ----------
 
-# MAGIC %sql
-# MAGIC ANALYZE TABLE meetupdb.flight_and_weather_delta COMPUTE STATISTICS FOR ALL COLUMNS;
-# MAGIC ANALYZE TABLE meetupdb.flights_delta COMPUTE STATISTICS FOR ALL COLUMNS;
+# %sql
+# ANALYZE TABLE meetupdb.flight_and_weather_delta COMPUTE STATISTICS FOR ALL COLUMNS;
+# ANALYZE TABLE meetupdb.flights_delta COMPUTE STATISTICS FOR ALL COLUMNS;
 
 # COMMAND ----------
 
@@ -241,9 +276,27 @@ flights_df.write.partitionBy("YEAR").saveAsTable("meetupdb.flights_delta",format
 # COMMAND ----------
 
 # MAGIC %sql
-# MAGIC create or replace table meetupdb.flight_and_weather_delta_zo partitioned by (year) as select * from meetupdb.flight_and_weather_delta ;
-# MAGIC optimize meetupdb.flight_and_weather_delta_zo ZORDER BY (dest,datestring);
-# MAGIC ANALYZE TABLE meetupdb.flight_and_weather_delta_zo COMPUTE STATISTICS FOR ALL COLUMNS;
+# MAGIC USE meetupdb ;
+# MAGIC OPTIMIZE flights_gold ZORDER BY (datestring,dest);
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC USE meetupdb ;
+# MAGIC OPTIMIZE flights_silver ZORDER BY (month, day, dest);
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC use  meetupdb ;
+# MAGIC DROP TABLE IF EXISTS flights_gold_ml ;
+# MAGIC 
+# MAGIC CREATE TABLE IF NOT EXISTS flights_gold_ml
+# MAGIC USING DELTA
+# MAGIC PARTITIONED BY (year)
+# MAGIC AS (
+# MAGIC     SELECT a.* from flights_gold
+# MAGIC )
 
 # COMMAND ----------
 
