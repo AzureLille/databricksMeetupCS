@@ -10,6 +10,14 @@ with open("/dbfs/databricks-datasets/airlines/README.md") as f:
 # COMMAND ----------
 
 # MAGIC %md
+# MAGIC <h1>The big picture</h1>
+# MAGIC <p>
+# MAGIC <img src="https://stademopictures.blob.core.windows.net/pictures/delta-big-picture.png" width=50%>
+# MAGIC </p>
+
+# COMMAND ----------
+
+# MAGIC %md
 # MAGIC <h1>Fun starts here !</h1>
 
 # COMMAND ----------
@@ -78,6 +86,14 @@ spark.udf.register("delay_label",delay_label,IntegerType())
 
 # COMMAND ----------
 
+# MAGIC %md
+# MAGIC ## Bronze: building raw data structures
+# MAGIC <p>
+# MAGIC <img src="https://stademopictures.blob.core.windows.net/pictures/delta-big-picture-bronze.png" width=50%>
+# MAGIC </p>
+
+# COMMAND ----------
+
 flights_data_wHead = "dbfs:/databricks-datasets/airlines/part-00000"
 
 # With a single node cluster ... Play this
@@ -120,18 +136,27 @@ display(flightsRaw_df)
 
 # COMMAND ----------
 
-#save data as a table - reusable using SQL
+#save data as a table - reusable using SQL /!\ long exec
 flightsRaw_df.write.mode("overwrite").format("DELTA").saveAsTable('meetupdb.flights_bronze')
 
 # COMMAND ----------
 
 # MAGIC %md
 # MAGIC <h3>Quality Control</h3> 
+# MAGIC /!\ long exec
 
 # COMMAND ----------
 
 from pyspark.sql.functions import count,when,isnan
 display(flightsRaw_df.select([count(when(isnan(c), c)).alias(c) for c in flightsRaw_df.columns]))
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## Silver: Filter and clean data
+# MAGIC <p>
+# MAGIC <img src="https://stademopictures.blob.core.windows.net/pictures/delta-big-picture-silver.png" width=50%>
+# MAGIC </p>
 
 # COMMAND ----------
 
@@ -208,6 +233,14 @@ display(flightsRaw_df.select([count(when(isnan(c), c)).alias(c) for c in flights
 
 # COMMAND ----------
 
+# MAGIC %md
+# MAGIC ## Gold area: enrich data for business usage
+# MAGIC <p>
+# MAGIC <img src="https://stademopictures.blob.core.windows.net/pictures/delta-big-picture-gold.png" width=50%>
+# MAGIC </p>
+
+# COMMAND ----------
+
 # DBTITLE 1,Join Weather and flights 
 # MAGIC %sql
 # MAGIC use  meetupdb ;
@@ -222,42 +255,6 @@ display(flightsRaw_df.select([count(when(isnan(c), c)).alias(c) for c in flights
 # MAGIC     FROM flights_silver a JOIN WEATHER_DATA b ON (a.DateString = b.DateString and a.Origin = b.Airport) 
 # MAGIC     ORDER BY b.DateString
 # MAGIC )
-
-# COMMAND ----------
-
-# flights_df = spark.sql('''select * from meetupdb.flights_silver''')
-# weather_df=weather_df.withColumnRenamed("Datestring","w_datestring").withColumnRenamed("YEAR","w_year")
-
-# joinedDF = (
-#   (flights_df.join(weather_df, flights_df.DateString == weather_df.w_datestring)).drop("MONTH","DAY","w_DateString", "w_YEAR"))
-          
-# display(joinedDF)
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC <h3> Now creating a global table in order to reuse it in another context (notebook, app, SQL Databricks etc.)</h3>
-
-# COMMAND ----------
-
-# MAGIC %sql
-# MAGIC -- CREATE DATABASE IF NOT EXISTS meetupdb;
-# MAGIC 
-# MAGIC -- DROP TABLE IF EXISTS meetupdb.flight_and_weather_parquet;
-# MAGIC -- DROP TABLE IF EXISTS meetupdb.flight_and_weather_delta;
-# MAGIC -- DROP TABLE IF EXISTS meetupdb.flight_and_weather_delta_zo;
-# MAGIC 
-# MAGIC -- DROP TABLE IF EXISTS meetupdb.flights_parquet;
-# MAGIC -- DROP TABLE IF EXISTS meetupdb.flights_delta;
-# MAGIC -- DROP TABLE IF EXISTS meetupdb.flights_delta_zo;
-
-# COMMAND ----------
-
-# joinedDF.write.partitionBy("YEAR").saveAsTable("meetupdb.flight_and_weather_parquet", format="parquet")
-# joinedDF.write.partitionBy("YEAR").saveAsTable("meetupdb.flight_and_weather_delta", format="delta")
-
-# flights_df.write.partitionBy("YEAR").saveAsTable("meetupdb.flights_parquet",format="parquet")
-# flights_df.write.partitionBy("YEAR").saveAsTable("meetupdb.flights_delta",format="delta")
 
 # COMMAND ----------
 
@@ -308,10 +305,3 @@ display(flightsRaw_df.select([count(when(isnan(c), c)).alias(c) for c in flights
 # MAGIC %sql
 # MAGIC USE meetupdb ;
 # MAGIC OPTIMIZE flights_gold_ml ZORDER BY (datestring,dest);
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC # TODO
-# MAGIC Préparer un job Cluster (filtre sur l'année en widget)
-# MAGIC Plus blabla sur génération de package, wheel etc.

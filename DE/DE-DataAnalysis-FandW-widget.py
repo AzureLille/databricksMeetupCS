@@ -4,18 +4,18 @@ dbutils.widgets.dropdown("YEAR", "2007", [str(x) for x in range(1987, 2022)])
 # COMMAND ----------
 
 # MAGIC %sql
-# MAGIC select distinct year from meetupdb.flights_delta order by 1;
+# MAGIC select distinct year from meetupdb.flights_silver order by 1;
 
 # COMMAND ----------
 
 # MAGIC %sql
-# MAGIC select * from meetupdb.flights_delta;
+# MAGIC select * from meetupdb.flights_silver;
 
 # COMMAND ----------
 
 # MAGIC %sql
 # MAGIC select year,origin,dest,sum(delay)
-# MAGIC from meetupdb.flights_delta
+# MAGIC from meetupdb.flights_silver
 # MAGIC where year=getArgument("YEAR")
 # MAGIC group by year,origin,dest
 # MAGIC having sum(delay)>100000
@@ -32,7 +32,7 @@ iata.createOrReplaceTempView("IATA")
 
 # MAGIC %sql
 # MAGIC select year,origin,concat(Dest,' - ',name) as name,sum(delay)
-# MAGIC from meetupdb.flights_delta as f join iata as i on i.iata_code=f.dest
+# MAGIC from meetupdb.flights_silver as f join iata as i on i.iata_code=f.dest
 # MAGIC where year in (
 # MAGIC     getArgument("YEAR"),
 # MAGIC     cast((getArgument("YEAR")+1) as int),
@@ -46,7 +46,7 @@ iata.createOrReplaceTempView("IATA")
 
 # MAGIC %sql
 # MAGIC select year,dest,sum(delay)
-# MAGIC from meetupdb.flights_delta
+# MAGIC from meetupdb.flights_silver
 # MAGIC where dest in ('EWR','LGA')
 # MAGIC group by year,dest
 # MAGIC order by year;
@@ -56,7 +56,7 @@ iata.createOrReplaceTempView("IATA")
 # MAGIC %sql
 # MAGIC create or replace temporary view FD
 # MAGIC as select year,count(1) as delayed,sum(delay) as delays_in_seconds
-# MAGIC from  meetupdb.flights_delta
+# MAGIC from  meetupdb.flights_silver
 # MAGIC where delay>0
 # MAGIC group by year
 # MAGIC order by 1;

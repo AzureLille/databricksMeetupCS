@@ -1,13 +1,13 @@
 # Databricks notebook source
 # MAGIC %sql
-# MAGIC select * from meetupdb.flights_delta;
+# MAGIC select * from meetupdb.flights_silver;
 
 # COMMAND ----------
 
 # MAGIC %sql
 # MAGIC select year,origin,dest,sum(delay)
-# MAGIC from meetupdb.flights_delta
-# MAGIC where year=2007
+# MAGIC from meetupdb.flights_silver
+# MAGIC where year=2007 and origin='ORD'
 # MAGIC group by year,origin,dest
 # MAGIC having sum(delay)>100000
 # MAGIC order by 1,4;
@@ -23,8 +23,8 @@ iata.createOrReplaceTempView("IATA")
 
 # MAGIC %sql
 # MAGIC select year,origin,concat(Dest,' - ',name) as name,sum(delay)
-# MAGIC from meetupdb.flights_delta as f join iata as i on i.iata_code=f.dest
-# MAGIC where year in (2006,2007,2008)
+# MAGIC from meetupdb.flights_silver as f join iata as i on i.iata_code=f.dest
+# MAGIC where year in (2006,2007,2008) and origin='ORD'
 # MAGIC group by year,origin,name, dest
 # MAGIC having sum(delay)>100000
 # MAGIC order by 1,4;
@@ -33,7 +33,7 @@ iata.createOrReplaceTempView("IATA")
 
 # MAGIC %sql
 # MAGIC select year,dest,sum(delay)
-# MAGIC from meetupdb.flights_delta
+# MAGIC from meetupdb.flights_silver
 # MAGIC where dest in ('EWR','LGA')
 # MAGIC group by year,dest
 # MAGIC order by year;
@@ -43,7 +43,7 @@ iata.createOrReplaceTempView("IATA")
 # MAGIC %sql
 # MAGIC create or replace temporary view FD
 # MAGIC as select year,count(1) as delayed,sum(delay) as delays_in_seconds
-# MAGIC from  meetupdb.flights_delta
+# MAGIC from  meetupdb.flights_silver
 # MAGIC where delay>0
 # MAGIC group by year
 # MAGIC order by 1;

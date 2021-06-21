@@ -3,7 +3,7 @@ from pyspark.sql.functions import trim
 
 # COMMAND ----------
 
-# MAGIC %fs ls /FileStore/data/
+# MAGIC %fs ls /FileStore/data
 
 # COMMAND ----------
 
