@@ -8,7 +8,7 @@ from pyspark.sql.functions import trim
 # COMMAND ----------
 
 raw_df=spark.read.csv('dbfs:/FileStore/data/weather-raw-chicago-hourly.csv', inferSchema=True,header=True).cache()
-raw_df.createOrReplaceTempView("RAW_DF")
+raw_df.write.mode("overwrite").format("DELTA").saveAsTable('meetupdb.weather_bronze')
 
 # COMMAND ----------
 
@@ -29,18 +29,12 @@ ORD_DF=spark.sql("""select STATION,
                   CAST( 
                       CASE 
                           WHEN DailySnowfall = 'T' then '0.0'
-                          else DailySnowfall
+                          ELSE DailySnowfall
                       END as double 
                       )as SNOW,
-                  CAST( 
-                      CASE 
-                          WHEN DailySnowDepth = 'T' then '0'
-                          else DailySnowfall
-                      END as int 
-                      )as SNWD,
                   DailyMinimumDryBulbTemperature as TMIN,
                   DailyMaximumDryBulbTemperature as TMAX
-              from RAW_DF
+              from  meetupdb.weather_bronze 
               where TRIM(REPORT_TYPE2)='SOD'
               order by DATE""")
 display(ORD_DF)
@@ -65,21 +59,20 @@ SEA_DF=spark.sql("""select STATION,
                   CAST( 
                       CASE 
                           WHEN DailySnowfall = 'T' then '0.0'
-                          else DailySnowfall
+                          ELSE DailySnowfall
                       END as double 
                       )as SNOW,
-                  CAST( 
-                      CASE 
-                          WHEN DailySnowDepth = 'T' then '0'
-                          else DailySnowfall
-                      END as int 
-                      )as SNWD,
                   DailyMinimumDryBulbTemperature as TMIN,
                   DailyMaximumDryBulbTemperature as TMAX
-              from RAW_DF
+              from  meetupdb.weather_bronze 
               where TRIM(REPORT_TYPE2)='SOD'
               order by DATE""")
 display(SEA_DF)
+
+# COMMAND ----------
+
+from pyspark.sql.functions import count,when,isnan,isnull
+display(SEA_DF.select([count(when(isnull(c), c)).alias(c) for c in SEA_DF.columns]))
 
 # COMMAND ----------
 
@@ -97,10 +90,6 @@ all_airports_df.createOrReplaceTempView("weather_data_df")
 # MAGIC AS (
 # MAGIC     SELECT * FROM weather_data_df
 # MAGIC     )
-
-# COMMAND ----------
-
-# MAGIC %sql select * from weather_data
 
 # COMMAND ----------
 

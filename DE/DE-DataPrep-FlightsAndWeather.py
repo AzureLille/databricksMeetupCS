@@ -42,7 +42,7 @@ def get_hour_base10(t: str) -> float :
   hour=int(temp_time[0:2])
   if (hour<0 or hour>=24) : 
     print(hour)
-    raise Exception("get_hour_base10(t) exception : hour should be between 0 and 23")
+    #raise Exception("get_hour_base10(t) exception : hour should be between 0 and 23")
     
   minute=int(temp_time[2:4])
   if (minute<0 or minute>=60):
@@ -182,25 +182,6 @@ display(flightsRaw_df.select([count(when(isnan(c), c)).alias(c) for c in flights
 
 # COMMAND ----------
 
-# weather_raw_df=spark.read.csv("dbfs:/FileStore/data/weather_filtered_chicago/",header=True,inferSchema=True)
-# weather_raw_df.createOrReplaceTempView("WEATHER_RAW")
-
-# weather_df=spark.sql("""
-#                      SELECT *,toDateString(YEAR, MONTH, DAY) DateString 
-#                      FROM
-#                      (
-#                        SELECT extract(year from date)  as YEAR,
-#                        extract(month from date) as MONTH,
-#                        extract(day from date) as DAY,
-#                        *
-#                        from WEATHER_RAW
-#                      )
-# """)
-# weather_df.createOrReplaceTempView("WEATHER_DATA")
-# display(weather_df)
-
-# COMMAND ----------
-
 # MAGIC %sql 
 # MAGIC --let's take a look at the weather data
 # MAGIC USE meetupdb ; 
@@ -218,52 +199,15 @@ display(flightsRaw_df.select([count(when(isnan(c), c)).alias(c) for c in flights
 # MAGIC USING DELTA
 # MAGIC PARTITIONED BY (year)
 # MAGIC AS (
-# MAGIC     SELECT a.*, b.STATION, b.DATE, b.PREP, b.SNOW, b.SNWD, b.TMIN, b.TMAX
+# MAGIC     SELECT a.*, b.STATION, b.DATE, b.PREP, b.SNOW, b.TMIN, b.TMAX
 # MAGIC     FROM flights_silver a JOIN WEATHER_DATA b ON (a.DateString = b.DateString and a.Origin = b.Airport) 
 # MAGIC     ORDER BY b.DateString
 # MAGIC )
 
 # COMMAND ----------
 
-# flights_df = spark.sql('''select * from meetupdb.flights_silver''')
-# weather_df=weather_df.withColumnRenamed("Datestring","w_datestring").withColumnRenamed("YEAR","w_year")
-
-# joinedDF = (
-#   (flights_df.join(weather_df, flights_df.DateString == weather_df.w_datestring)).drop("MONTH","DAY","w_DateString", "w_YEAR"))
-          
-# display(joinedDF)
-
-# COMMAND ----------
-
 # MAGIC %md
 # MAGIC <h3> Now creating a global table in order to reuse it in another context (notebook, app, SQL Databricks etc.)</h3>
-
-# COMMAND ----------
-
-# MAGIC %sql
-# MAGIC -- CREATE DATABASE IF NOT EXISTS meetupdb;
-# MAGIC 
-# MAGIC -- DROP TABLE IF EXISTS meetupdb.flight_and_weather_parquet;
-# MAGIC -- DROP TABLE IF EXISTS meetupdb.flight_and_weather_delta;
-# MAGIC -- DROP TABLE IF EXISTS meetupdb.flight_and_weather_delta_zo;
-# MAGIC 
-# MAGIC -- DROP TABLE IF EXISTS meetupdb.flights_parquet;
-# MAGIC -- DROP TABLE IF EXISTS meetupdb.flights_delta;
-# MAGIC -- DROP TABLE IF EXISTS meetupdb.flights_delta_zo;
-
-# COMMAND ----------
-
-# joinedDF.write.partitionBy("YEAR").saveAsTable("meetupdb.flight_and_weather_parquet", format="parquet")
-# joinedDF.write.partitionBy("YEAR").saveAsTable("meetupdb.flight_and_weather_delta", format="delta")
-
-# flights_df.write.partitionBy("YEAR").saveAsTable("meetupdb.flights_parquet",format="parquet")
-# flights_df.write.partitionBy("YEAR").saveAsTable("meetupdb.flights_delta",format="delta")
-
-# COMMAND ----------
-
-# %sql
-# ANALYZE TABLE meetupdb.flight_and_weather_delta COMPUTE STATISTICS FOR ALL COLUMNS;
-# ANALYZE TABLE meetupdb.flights_delta COMPUTE STATISTICS FOR ALL COLUMNS;
 
 # COMMAND ----------
 
@@ -288,7 +232,7 @@ display(flightsRaw_df.select([count(when(isnan(c), c)).alias(c) for c in flights
 
 # MAGIC %sql
 # MAGIC USE meetupdb ;
-# MAGIC OPTIMIZE flights_silver ZORDER BY (month, day, dest);
+# MAGIC OPTIMIZE flights_silver_full ZORDER BY (month, day, dest);
 
 # COMMAND ----------
 
