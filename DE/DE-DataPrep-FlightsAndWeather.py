@@ -1,4 +1,8 @@
 # Databricks notebook source
+# MAGIC %fs ls /databricks-datasets/
+
+# COMMAND ----------
+
 with open("/dbfs/databricks-datasets/airlines/README.md") as f:
   print(f.read())
 
@@ -141,6 +145,22 @@ flightsRaw_df.write.mode("overwrite").format("DELTA").saveAsTable('meetupdb.flig
 
 # COMMAND ----------
 
+# MAGIC %sql select count(1) from meetupdb.flights_bronze where year=1987;
+
+# COMMAND ----------
+
+# MAGIC %sql delete from meetupdb.flights_bronze where year=1987;
+
+# COMMAND ----------
+
+# MAGIC %sql select count(1) from meetupdb.flights_bronze where year=1987;
+
+# COMMAND ----------
+
+# MAGIC %sql desc history meetupdb.flights_bronze
+
+# COMMAND ----------
+
 # MAGIC %md
 # MAGIC <h3>Quality Control</h3> 
 # MAGIC /!\ long exec
@@ -198,7 +218,7 @@ display(flightsRaw_df.select([count(when(isnan(c), c)).alias(c) for c in flights
 # COMMAND ----------
 
 # MAGIC %sql
-# MAGIC select * from flights_silver limit 100;
+# MAGIC select * from meetupdb.flights_silver limit 100;
 
 # COMMAND ----------
 
