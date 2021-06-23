@@ -32,6 +32,11 @@ X_test = test_pd_df.drop(['label'],axis = 1)
 
 # COMMAND ----------
 
+#get Delta version - to cpature with MLFlow 
+delta_version = sql("SELECT MAX(version) AS VERSION FROM (DESCRIBE HISTORY meetupdb.flights_gold_ml)").head()[0]
+
+# COMMAND ----------
+
 # MAGIC %md 
 # MAGIC ## Feature Engineering and preparation
 # MAGIC Dicretisation of value and Categorical value encoding 
@@ -83,6 +88,7 @@ preprocessor = ColumnTransformer(
 X_train_tr = preprocessor.fit_transform(X_train)
 X_test_tr = preprocessor.fit_transform(X_test)
 
+X_train_tr.shape
 
 # COMMAND ----------
 
@@ -102,6 +108,8 @@ model_baseline = RandomForestClassifier( **params_init )
 mlflow.sklearn.autolog()
 with mlflow.start_run(run_name = "Sckit Learn unit" ) as run:
   model_baseline.fit(X_train_tr, y_train)
+  mlflow.log_param("delta_version", delta_version) # Log Delta table version along with the model
+  mlflow.set_tag("project", "Airline Ontime")  # add a tag to the model 
 
 print("model accuracy Score (test dataset) : {}".format(model_baseline.score(X_test_tr, y_test )))
 # log parameter -> Not needed with sklearn autolog 
@@ -113,7 +121,7 @@ print("model accuracy Score (test dataset) : {}".format(model_baseline.score(X_t
 # COMMAND ----------
 
 # MAGIC %md 
-# MAGIC let; 
+# MAGIC let's take a look at the performance of the baseline model
 
 # COMMAND ----------
 
@@ -121,22 +129,6 @@ from sklearn.metrics import roc_curve, auc                # to import roc curve 
 import seaborn as sns                                     # Python graphing library
 import matplotlib.pyplot as plt
 from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay, plot_roc_curve
-
-# def rocCurve(Model,Y,X):
-#     # Perforamnce of the model
-#     fpr, tpr, _ = roc_curve(Y, Model.predict_proba(X)[:,1])
-#     AUC  = auc(fpr, tpr)
-#     print ('the AUC is : %0.4f' %  AUC)
-#     plt.figure()
-#     plt.plot(fpr, tpr, label='ROC curve (area = %0.4f)' % AUC)
-#     plt.plot([0, 1], [0, 1], 'k--')
-#     plt.xlim([0.0, 1.0])
-#     plt.ylim([0.0, 1.05])
-#     plt.xlabel('False Positive Rate')
-#     plt.ylabel('True Positive Rate')
-#     plt.title('ROC Curve')
-#     plt.legend(loc="lower right")
-#     plt.show()
 
 def rocCurve(Model,Y,X):  
   plot_roc_curve(Model, X, Y)
@@ -179,6 +171,9 @@ grid_search = GridSearchCV(model_grid_search, params, n_jobs = -1)
 mlflow.sklearn.autolog()
 with mlflow.start_run(run_name = "Sckit Learn unit" ) as run:
   grid_search.fit(X_train_tr, y_train)
+  mlflow.log_param("delta_version", delta_version) # Log Delta table version along with the model
+  mlflow.set_tag("project", "Airline Ontime")  # add a tag to the model 
+
   
 end_time = time.time()
 print("Runtime = {} mins".format(round( (end_time-start_time)/60 ,  2)))
@@ -231,41 +226,52 @@ grid_search.best_params_
 
 # COMMAND ----------
 
+# DBTITLE 1,Setup Cost function 
 import mlflow
 from sklearn.model_selection import cross_val_score
 from sklearn.ensemble import RandomForestClassifier
-from hyperopt import fmin, tpe, hp, STATUS_OK, SparkTrials, space_eval
+from hyperopt import STATUS_OK
 
 def objective(params):
-    model_baseline = RandomForestClassifier( **params )
-    accuracy = cross_val_score(model_baseline, X_test_tr, y_test, cv = 2).mean()
+    #Note hp.quniform returns a Double -> Need to be converted to int ! 
+    model_baseline = RandomForestClassifier( max_depth = int(params['max_depth']) , 
+                                             min_samples_split = int(params['min_samples_split'] ), 
+                                             criterion =  params['criterion']  )
+    accuracy = cross_val_score(model_baseline, X_test_tr, y_test, cv = 2).mean() # cv should be at 5 but speeding things up... 
     
     # Because fmin() tries to minimize the objective, this function must return the negative accuracy. 
     return {'loss': -accuracy, 'status': STATUS_OK, }
 
+
+# COMMAND ----------
+
+# Alternative cost function that returns a model
 # def objective(params):
 #     clf = RandomForestClassifier( **params , n_jobs = -1 )
 #     mlflow.sklearn.autolog()
 #     with mlflow.start_run(run_name = "hyperopt" ) :
 #         clf.fit(X_train_tr, y_train)
 #         score = clf.score(X_test_tr, y_test)
-#     #accuracy = cross_val_score(model_baseline, X_test_tr, y_test, cv = 2).mean()
-
 #     # Because fmin() tries to minimize the objective, this function must return the negative accuracy. 
 #     return {'loss': -score, 'status': STATUS_OK, 'model': clf }
 
+# COMMAND ----------
+
+# DBTITLE 1,Setup Search Space
 #Search Space 
-import numpy as np
+from hyperopt import hp, STATUS_OK
 search_space = {
-        'max_depth': hp.choice('max_depth',np.arange(5, 16, 5, dtype=int)),
-        'n_estimators' : hp.choice('n_estimators',np.arange(100, 201, 50, dtype=int)),
+        'max_depth': hp.quniform('max_depth', 5, 16 , 2 ),
+        'min_samples_split' : hp.quniform('min_samples_split', 2, 11, 2 ),
         'criterion': hp.choice('criterion', ['gini', 'entropy'])
     }
-
+# Note hp.quniform returns a double !!!!!
+# see https://github.com/hyperopt/hyperopt/wiki/FMin#21-parameter-expressions 
 
 # COMMAND ----------
 
-spark_trials = SparkTrials(parallelism = 12 )
+from hyperopt import fmin, tpe, SparkTrials, space_eval
+spark_trials = SparkTrials(parallelism = 16 ) 
 
 import time
 start_time = time.time()
@@ -276,46 +282,35 @@ with mlflow.start_run(run_name = "hyperopt", nested = True ) as run:
     fn=objective,
     space=search_space,
     algo=tpe.suggest,
-    max_evals=12,
+    max_evals=16,
     trials = spark_trials)
   
   #create and register model with best params ( model registration is automatic with sklearn.autolog() - when using fit. )
   best_params = space_eval(search_space,best)
-  clf = RandomForestClassifier( **best_params , n_jobs = -1 )
+  clf = RandomForestClassifier( max_depth = int(best_params['max_depth']) , 
+                                min_samples_split = int(best_params['min_samples_split'] ), 
+                                criterion =  best_params['criterion'] , n_jobs = -1 )
   clf.fit(X_train_tr, y_train)
-  mlflow.log_param("delta_version", delta_version)
   
-  for key, value in best_params.items():
-    mlflow.log_param(key, value)
-  mlflow.set_tag("project", "Airline Ontime")
-  mlflow.set_tag("model", "random_forest_scikit")    
+  #log extra params 
+  mlflow.log_param("delta_version", delta_version)
+  mlflow.set_tag("model", "random_forest_scikit")  
+  
+#   for key, value in best_params.items():
+#     mlflow.log_param(key, value)
   #mlflow.log_metric("accuracy", -spark_trials.best_trial['result']['loss'])
   
 end_time = time.time()
 print("Runtime = {} mins".format(round( (end_time-start_time)/60 ,  2)))
 
-# COMMAND ----------
-
-from hyperopt import space_eval
-hyperopt.space_eval(search_space,argmin)
+#best parameters
+print(space_eval(search_space,best))
 
 # COMMAND ----------
 
-hyperopt.space_eval
+# To do 
+# Inference using spark and save to table 
 
 # COMMAND ----------
 
-np.arange(100, 251, 50, dtype=int)
-
-# COMMAND ----------
-
-spark_trials.miscs
-
-# COMMAND ----------
-
-argmin
-
-# COMMAND ----------
-
-from hyperopt import space_eval
-hyperopt.space_eval(search_space,argmin)
+model_from_registry = mlflow.spark.load_model('models:/airlines_ontime_pred/production')
