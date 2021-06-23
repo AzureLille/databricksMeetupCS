@@ -135,7 +135,7 @@ def rocCurve(Model,Y,X):
 
 def confusionMatrix(Model, Y, X) :
   cm = confusion_matrix(Y, Model.predict(X) , normalize='all')
-  cmd = ConfusionMatrixDisplay(cm, display_labels=['business','health'])
+  cmd = ConfusionMatrixDisplay(cm, display_labels=['on-time','late']) # 
   cmd.plot()
 
 # COMMAND ----------
@@ -307,6 +307,14 @@ print(space_eval(search_space,best))
 
 # COMMAND ----------
 
+confusionMatrix(clf, y_test, X_test_tr )
+
+# COMMAND ----------
+
+rocCurve(clf, y_test, X_test_tr )
+
+# COMMAND ----------
+
 # To do 
 # Inference using spark and save to table 
 
@@ -323,7 +331,9 @@ data_2008 = spark.sql('''SELECT *, concat(Origin, Dest) as line
                         WHERE Year = 2008
                         ''')\
                     .drop("DateString","DATE","STATION")\
-                    .toPandas().drop(['label'],axis = 1)
+                    .toPandas()
+label_2008 = data_2008['label']   
+data_2008=data_2008.drop(['label'],axis = 1)
 
 # COMMAND ----------
 
@@ -340,6 +350,7 @@ data_2008_tr = pd.DataFrame(preprocessor.fit_transform(data_2008))
 loaded_model_pd = mlflow.pyfunc.load_model(model_uri='models:/airlines_ontime_pred/production')
 #add prediction to the end of the original Datafrome 
 data_2008['prediction'] = loaded_model_pd.predict(data_2008_tr)
+data_2008['label'] = label_2008
 
 # COMMAND ----------
 
@@ -355,7 +366,7 @@ display(data_2008)
 # Enable Arrow-based columnar data transfers
 spark.conf.set("spark.sql.execution.arrow.enabled", "true")
 predicted_df = spark.createDataFrame(data_2008)
-predicted_df.write.format("delta").mode("append").saveAsTable("meetupdb.gold_ml_predicted")
+predicted_df.write.format("delta").mode("overwrite").saveAsTable("meetupdb.gold_ml_predicted")
 
 # COMMAND ----------
 
