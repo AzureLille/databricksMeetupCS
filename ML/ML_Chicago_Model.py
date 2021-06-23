@@ -28,7 +28,6 @@ test_pd_df = spark.sql('''SELECT *, concat(Origin, Dest) as line
                         ''')\
                     .drop("DateString","DATE","STATION")\
                     .toPandas()
-X_test = test_pd_df.drop(['label'],axis = 1)
 
 # COMMAND ----------
 
@@ -52,7 +51,7 @@ X_train['SNOW'] = X_train['PREP'].apply(lambda x: int(x*100)).astype('int32') #N
 y_train = train_pd_df["label"]
 del train_pd_df #remove original object form memory
 
-
+X_test = test_pd_df.drop(['label'],axis = 1)
 X_test['decimal_DepTime'] = X_test['decimal_DepTime'].apply(lambda x: int(x*100)).astype('int32') #Need discreet values for decision tree
 X_test['PREP'] = X_test['PREP'].apply(lambda x: int(x*100)).astype('int32') #Need discreet values for decision tree
 X_test['SNOW'] = X_test['PREP'].apply(lambda x: int(x*100)).astype('int32') #Need discreet values for decision tree
@@ -313,4 +312,58 @@ print(space_eval(search_space,best))
 
 # COMMAND ----------
 
-model_from_registry = mlflow.spark.load_model('models:/airlines_ontime_pred/production')
+# MAGIC %md 
+# MAGIC ## Apply the Model to a Pandas DataFrame
+
+# COMMAND ----------
+
+#get 2008 Data 
+data_2008 = spark.sql('''SELECT *, concat(Origin, Dest) as line
+                        FROM meetupdb.flights_gold_ml 
+                        WHERE Year = 2008
+                        ''')\
+                    .drop("DateString","DATE","STATION")\
+                    .toPandas().drop(['label'],axis = 1)
+
+# COMMAND ----------
+
+#run the data prep pipeline 
+data_2008['decimal_DepTime'] = data_2008['decimal_DepTime'].apply(lambda x: int(x*100)).astype('int32') #Need discreet values for decision tree
+data_2008['PREP'] = data_2008['PREP'].apply(lambda x: int(x*100)).astype('int32') #Need discreet values for decision tree
+data_2008['SNOW'] = data_2008['PREP'].apply(lambda x: int(x*100)).astype('int32') #Need discreet values for decision tree
+
+data_2008_tr = pd.DataFrame(preprocessor.fit_transform(data_2008))
+
+# COMMAND ----------
+
+# load model from the Model Repository 
+loaded_model_pd = mlflow.pyfunc.load_model(model_uri='models:/airlines_ontime_pred/production')
+#add prediction to the end of the original Datafrome 
+data_2008['prediction'] = loaded_model_pd.predict(data_2008_tr)
+
+# COMMAND ----------
+
+display(data_2008)
+
+# COMMAND ----------
+
+# MAGIC %md 
+# MAGIC ## Save to a table
+
+# COMMAND ----------
+
+# Enable Arrow-based columnar data transfers
+spark.conf.set("spark.sql.execution.arrow.enabled", "true")
+predicted_df = spark.createDataFrame(data_2008)
+predicted_df.write.format("delta").mode("append").saveAsTable("meetupdb.gold_ml_predicted")
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC Select * 
+# MAGIC from meetupdb.gold_ml_predicted
+# MAGIC where prediction = 1 
+
+# COMMAND ----------
+
+
