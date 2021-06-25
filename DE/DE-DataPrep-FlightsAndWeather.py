@@ -9,11 +9,6 @@ with open("/dbfs/databricks-datasets/airlines/README.md") as f:
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC bonjour Laurent
-
-# COMMAND ----------
-
-# MAGIC %md
 # MAGIC Inspired by : https://github.com/frenchlam/Airline_ontime_prediction/blob/master/Airline_prediction.scala
 
 # COMMAND ----------
