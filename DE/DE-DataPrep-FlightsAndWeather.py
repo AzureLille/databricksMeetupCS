@@ -325,3 +325,7 @@ display(flightsRaw_df.select([count(when(isnan(c), c)).alias(c) for c in flights
 # MAGIC %sql
 # MAGIC USE meetupdb ;
 # MAGIC OPTIMIZE flights_gold_ml ZORDER BY (datestring,dest);
+
+# COMMAND ----------
+
+

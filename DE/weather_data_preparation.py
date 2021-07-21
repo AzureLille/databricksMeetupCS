@@ -3,11 +3,26 @@ from pyspark.sql.functions import trim
 
 # COMMAND ----------
 
-# MAGIC %fs ls /FileStore/data
+current_user = dbutils.notebook.entry_point.getDbutils().notebook().getContext().tags().apply('user')
+url = 'https://github.com/AzureLille/databricksMeetupCS/raw/final/data/weather-raw-chicago-hourly.zip'
+path = "/tmp/weather-raw-chicago-hourly.zip"
+
+import urllib 
+urllib.request.urlretrieve(url, path)
 
 # COMMAND ----------
 
-raw_df=spark.read.csv('dbfs:/FileStore/data/weather-raw-chicago-hourly.csv', inferSchema=True,header=True).cache()
+# MAGIC %sh
+# MAGIC unzip /tmp/weather-raw-chicago-hourly.zip -d /tmp/
+# MAGIC mv 
+
+# COMMAND ----------
+
+dbutils.fs.mv("file:/tmp/weather-raw-chicago-hourly.csv", "dbfs:/Users/"+current_user)
+
+# COMMAND ----------
+
+raw_df=spark.read.csv('dbfs:/Users/'+current_user+'/weather-raw-chicago-hourly.csv', inferSchema=True,header=True).cache()
 raw_df.createOrReplaceTempView("RAW_DF")
 
 # COMMAND ----------

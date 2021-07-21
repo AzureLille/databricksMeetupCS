@@ -11,23 +11,17 @@
 
 # COMMAND ----------
 
-# DBTITLE 1,Test and Train datasets - using 2007 data to predict 2008 flights 
+# DBTITLE 1,Import data to Pandas 
 import pandas as pd
 
 # read data from Spark 
-train_pd_df = spark.sql('''SELECT *, concat(Origin, Dest) as line
+data_pd_df = spark.sql('''SELECT *, concat(Origin, Dest) as line
                         FROM meetupdb.flights_gold_ml 
-                        WHERE Year = 2007
-                        ''')\
-                    .drop("DateString","DATE","STATION")\
-                    .toPandas().sample(frac=0.3, replace=True, random_state=1)
-
-test_pd_df = spark.sql('''SELECT *, concat(Origin, Dest) as line
-                        FROM meetupdb.flights_gold_ml 
-                        WHERE Year = 2007
+                        WHERE Year = 2007 or Year = 2008
                         ''')\
                     .drop("DateString","DATE","STATION")\
                     .toPandas()
+
 
 # COMMAND ----------
 
@@ -43,31 +37,12 @@ delta_version = sql("SELECT MAX(version) AS VERSION FROM (DESCRIBE HISTORY meetu
 # COMMAND ----------
 
 # DBTITLE 1,Discretisation of features
-X_train = train_pd_df.drop(['label'],axis = 1)
-X_train['decimal_DepTime'] = X_train['decimal_DepTime'].apply(lambda x: int(x*100)).astype('int32') #Need discreet values for decision tree
-X_train['PREP'] = X_train['PREP'].apply(lambda x: int(x*100)).astype('int32') #Need discreet values for decision tree
-X_train['SNOW'] = X_train['PREP'].apply(lambda x: int(x*100)).astype('int32') #Need discreet values for decision tree
+data = data_pd_df.drop(['SNWD','delay'],axis = 1)
+data['decimal_DepTime'] = data['decimal_DepTime'].apply(lambda x: int(x*100)).astype('int32') #Need discreet values for decision tree
+data['PREP'] = data['PREP'].apply(lambda x: int(x*100)).astype('int32') #Need discreet values for decision tree
+data['SNOW'] = data['PREP'].apply(lambda x: int(x*100)).astype('int32') #Need discreet values for decision tree
 
-y_train = train_pd_df["label"]
-del train_pd_df #remove original object form memory
-
-X_test = test_pd_df.drop(['label'],axis = 1)
-X_test['decimal_DepTime'] = X_test['decimal_DepTime'].apply(lambda x: int(x*100)).astype('int32') #Need discreet values for decision tree
-X_test['PREP'] = X_test['PREP'].apply(lambda x: int(x*100)).astype('int32') #Need discreet values for decision tree
-X_test['SNOW'] = X_test['PREP'].apply(lambda x: int(x*100)).astype('int32') #Need discreet values for decision tree
-
-y_test = test_pd_df["label"]
-del test_pd_df #remove original object form memory
-
-display(X_train)
-
-# COMMAND ----------
-
-#sanity check
-print('Training Features Shape:', X_train.shape)
-print('Training Labels Shape:', y_train.shape)
-print('Testing Features Shape:', X_test.shape)
-print('Testing Labels Shape:', y_test.shape)
+del data_pd_df #remove original object form memory
 
 
 # COMMAND ----------
@@ -84,10 +59,57 @@ ordinal_enc = OrdinalEncoder()
 preprocessor = ColumnTransformer(
     transformers=[('ord', ordinal_enc, categorical_ordinal)])
 
-X_train_tr = preprocessor.fit_transform(X_train)
-X_test_tr = preprocessor.fit_transform(X_test)
+data_ord_enc_df = pd.DataFrame(preprocessor.fit_transform(data)).rename(columns={0:'TailNum', 1:'Origin', 2:'Dest',3:'line',4:'UniqueCarrier'}).reset_index(drop=True)
+data_ord_enc_df.rename(columns={0:'TailNum', 1:'Origin', 2:'Dest',3:'line',4:'UniqueCarrier'},inplace=True)
 
-X_train_tr.shape
+
+# COMMAND ----------
+
+data.drop(['TailNum','Origin','Dest', 'line', 'UniqueCarrier' ],axis = 1,inplace = True)
+data.reset_index(drop=True)
+X_transformed = pd.concat([data, data_ord_enc_df], axis=1)
+display(X_transformed)
+
+# COMMAND ----------
+
+X_transformed.shape
+
+# COMMAND ----------
+
+#save to table
+spark.conf.set("spark.sql.execution.arrow.enabled", "true")
+gold_tranformed_df = spark.createDataFrame(X_transformed)
+gold_tranformed_df.write.format("delta").mode("overwrite").saveAsTable("meetupdb.gold_ml_transformed")
+
+
+# COMMAND ----------
+
+# DBTITLE 1,Test / Train Split 
+#learning on 2007 data 
+
+X_transformed_2007 = X_transformed[X_transformed['Year']==2007].sample(frac=0.3, replace=True, random_state=1)
+y_train = X_transformed_2007["label"]
+X_train = X_transformed_2007.drop(["label"],axis =1)
+del X_transformed_2007
+
+# testing on 2008 data 
+X_transformed_2008 = X_transformed[X_transformed['Year']==2008]
+y_test = X_transformed_2008["label"]
+X_test = X_transformed_2008.drop(["label"],axis =1)
+del X_transformed_2008
+
+
+# COMMAND ----------
+
+X_test
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC #  AutoML
+# MAGIC [create automl experiment](https://e2-demo-west.cloud.databricks.com/?o=2556758628403379#ml/automl/create)  
+# MAGIC 
+# MAGIC [existing experiment](https://e2-demo-west.cloud.databricks.com/?o=2556758628403379#mlflow/experiments/1498949451720380/s?orderByKey=metrics.%60val_roc_auc_score%60&orderByAsc=false)
 
 # COMMAND ----------
 
@@ -106,11 +128,11 @@ model_baseline = RandomForestClassifier( **params_init )
 
 mlflow.sklearn.autolog()
 with mlflow.start_run(run_name = "Sckit Learn unit" ) as run:
-  model_baseline.fit(X_train_tr, y_train)
+  model_baseline.fit(X_train, y_train)
   mlflow.log_param("delta_version", delta_version) # Log Delta table version along with the model
   mlflow.set_tag("project", "Airline Ontime")  # add a tag to the model 
 
-print("model accuracy Score (test dataset) : {}".format(model_baseline.score(X_test_tr, y_test )))
+print("model accuracy Score (test dataset) : {}".format(model_baseline.score(X_test, y_test )))
 # log parameter -> Not needed with sklearn autolog 
 #   for key value in params_init.items : 
 #     mlflow.log_param(key, value)
@@ -140,12 +162,12 @@ def confusionMatrix(Model, Y, X) :
 
 # COMMAND ----------
 
-confusionMatrix(model_baseline, y_test, X_test_tr )
+confusionMatrix(model_baseline, y_test, X_test )
 
 
 # COMMAND ----------
 
-rocCurve(model_baseline, y_test, X_test_tr )
+rocCurve(model_baseline, y_test, X_test )
 
 # COMMAND ----------
 
@@ -376,4 +398,5 @@ predicted_df.write.format("delta").mode("overwrite").saveAsTable("meetupdb.gold_
 # MAGIC where prediction = 1 
 
 # COMMAND ----------
+
 
